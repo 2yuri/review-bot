@@ -1,0 +1,27 @@
+version: "3.7"
+
+services:
+  db:
+    image: postgres:14.1-alpine
+    container_name: review-db
+    networks:
+      - review-net
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "25432:5432"
+    environment:
+      POSTGRES_DB: "${DB_NAME}"
+      POSTGRES_USER: "${DB_USER}"
+      POSTGRES_PASSWORD: "${DB_PASS}"
+      PGDATA: /var/lib/postgresql/data/review-db
+    volumes:
+      - reviewdb:/var/lib/postgresql/data
+
+networks:
+  review-net:
+    driver: bridge
+
+volumes:
+  reviewdb:
+    driver: local

@@ -1,0 +1,80 @@
+service: review-bot
+
+plugins:
+  - serverless-prune-plugin
+  - serverless-go-plugin
+  - serverless-plugin-lambda-dead-letter
+package:
+  individually: true
+  excludeDevDependencies: true
+provider:
+  name: aws
+  runtime: provided.al2
+  architecture: x86_64
+  region: us-east-1
+  stage: ${opt:stage,'dev'}
+  tracing:
+    lambda: true
+    apiGateway: true
+  memorySize: 128
+  timeout: 10
+  logs:
+    metrics: true
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - codedeploy:*
+          Resource:
+            - "*"
+        - Effect: Allow
+          Action:
+            - sqs:*
+          Resource:
+            Fn::GetAtt: [ DispatcherQueue, Arn ]
+        - Effect: Allow
+          Action:
+            - sqs:*
+          Resource:
+            Fn::GetAtt: [ DispatcherDeadLetterQueue, Arn ]
+
+  environment:
+    REGION: "us-east-1"
+    TELEGRAM_BOT_KEY: ${file(lambdas/configs/config.${opt:stage, 'dev'}.json):TELEGRAM_BOT_KEY}
+    LOG_LEVEL: ${file(lambdas/configs/config.${opt:stage, 'dev'}.json):LOG_LEVEL}
+custom:
+  go:
+    supportedRuntimes: [ "provided.al2" ]
+    buildProvidedRuntimeAsBootstrap: true
+    baseDir: .
+    binDir: bin
+    cgo: 0
+    cmd: GOARCH=amd64 GOOS=linux go build -ldflags="-s -w"
+  prune:
+    automatic: true
+    number: 3
+
+functions:
+  dispatcher:
+    handler: lambdas/dispatcher/main.go
+    deadLetter:
+      targetArn:
+        GetResourceArn: DispatcherDeadLetterQueue
+    timeout: 30
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - DispatcherQueue
+              - Arn
+resources:
+  Resources:
+    DispatcherDeadLetterQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: dispatcher-dl-${opt:stage, 'dev'}-queue
+    DispatcherQueue:
+      Type: "AWS::SQS::Queue"
+      Properties:
+        QueueName: dispatcher-${opt:stage, 'dev'}-queue
